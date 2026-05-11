@@ -5,6 +5,7 @@ import androidx.compose.ui.Modifier
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import com.bacheatec.ui.screens.DetectorScreen
 import com.bacheatec.ui.screens.HomeScreen
 import com.bacheatec.ui.screens.MapScreen
 import com.bacheatec.ui.screens.ReportScreen
@@ -24,5 +25,6 @@ fun BacheaTecNavHost(
         composable(NavRoutes.MAP) { MapScreen() }
         composable(NavRoutes.REPORT) { ReportScreen() }
         composable(NavRoutes.STATS) { StatsScreen() }
+        composable(NavRoutes.DETECTOR) { DetectorScreen() }
     }
 }

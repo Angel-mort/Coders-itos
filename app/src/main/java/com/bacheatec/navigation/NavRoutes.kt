@@ -5,4 +5,5 @@ object NavRoutes {
     const val MAP = "map"
     const val REPORT = "report"
     const val STATS = "stats"
+    const val DETECTOR = "detector"
 }

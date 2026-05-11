@@ -5,6 +5,7 @@ import androidx.compose.material.icons.filled.AddLocation
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Map
+import androidx.compose.material.icons.filled.Sensors
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -28,6 +29,7 @@ private val destinations = listOf(
     BottomDestination(NavRoutes.MAP, "Mapa", Icons.Filled.Map),
     BottomDestination(NavRoutes.REPORT, "Reportar", Icons.Filled.AddLocation),
     BottomDestination(NavRoutes.STATS, "Estadísticas", Icons.Filled.BarChart),
+    BottomDestination(NavRoutes.DETECTOR, "Detector", Icons.Filled.Sensors),
 )
 
 @Composable
