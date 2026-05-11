@@ -19,6 +19,6 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "Coders-itos"
+rootProject.name = "BacheaTec"
 include(":app")
  
