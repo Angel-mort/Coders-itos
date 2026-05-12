@@ -25,6 +25,6 @@ fun BacheaTecNavHost(
         composable(NavRoutes.MAP) { MapScreen() }
         composable(NavRoutes.REPORT) { ReportScreen() }
         composable(NavRoutes.STATS) { StatsScreen() }
-        composable(NavRoutes.DETECTOR) { DetectorScreen() }
+        composable(NavRoutes.DETECTOR) { DetectorScreen(navController = navController) }
     }
 }

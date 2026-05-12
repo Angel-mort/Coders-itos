@@ -12,15 +12,18 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -29,18 +32,27 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import androidx.navigation.NavHostController
+import com.bacheatec.data.PotholeSession
+import com.bacheatec.data.model.PotholeCandidate
+import com.bacheatec.navigation.NavRoutes
 import com.bacheatec.sensor.PotholeDetector
 
 @Composable
-fun DetectorScreen(modifier: Modifier = Modifier) {
+fun DetectorScreen(
+    navController: NavHostController,
+    modifier: Modifier = Modifier,
+) {
     val context = LocalContext.current
     val appContext = context.applicationContext
     val detector = remember { PotholeDetector(appContext) }
 
     var listening by remember { mutableStateOf(false) }
-    var count by remember { mutableIntStateOf(0) }
     var hint by remember { mutableStateOf<String?>(null) }
     var pendingStart by remember { mutableStateOf(false) }
+    var dialogCandidate by remember { mutableStateOf<PotholeCandidate?>(null) }
+
+    val candidates = PotholeSession.candidates
 
     val permissions = remember {
         arrayOf(
@@ -72,7 +84,7 @@ fun DetectorScreen(modifier: Modifier = Modifier) {
                 if (detector.start()) {
                     listening = true
                 } else {
-                    hint = "No se pudo iniciar (¿acelerómetro?)."
+                    hint = "No se pudo iniciar (¿sensor de movimiento?)."
                 }
             } else {
                 hint = "Se necesita ubicación para guardar coordenadas."
@@ -81,13 +93,41 @@ fun DetectorScreen(modifier: Modifier = Modifier) {
     }
 
     DisposableEffect(detector) {
-        detector.onPotholeDetected = { _, _, _ ->
-            count++
+        detector.onPotholeDetected = { lat, lon, mag ->
+            val c = PotholeSession.recordDetection(lat, lon, mag)
+            dialogCandidate = c
         }
         onDispose {
             detector.onPotholeDetected = null
             detector.stop()
         }
+    }
+
+    dialogCandidate?.let { candidate ->
+        AlertDialog(
+            onDismissRequest = { dialogCandidate = null },
+            title = { Text("¿Reportar un bache?") },
+            text = {
+                Text(
+                    "Se detectó un posible bache (${"%.1f".format(candidate.magnitudeMs2)} m/s²). " +
+                        "¿Ir al formulario con la ubicación?",
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        PotholeSession.setReportDraft(candidate)
+                        dialogCandidate = null
+                        navController.navigate(NavRoutes.REPORT) {
+                            launchSingleTop = true
+                        }
+                    },
+                ) { Text("Sí, reportar") }
+            },
+            dismissButton = {
+                TextButton(onClick = { dialogCandidate = null }) { Text("No") }
+            },
+        )
     }
 
     Column(
@@ -124,12 +164,12 @@ fun DetectorScreen(modifier: Modifier = Modifier) {
         }
 
         Text(
-            text = "Baches detectados: $count",
+            text = "Baches detectados (sesión): ${candidates.size}",
             style = MaterialTheme.typography.headlineSmall,
         )
 
         Text(
-            text = "Umbral magnitud: ${"%.1f".format(detector.accelerationThresholdMs2)} m/s² (ajústalo en código si hace falta).",
+            text = "Umbral magnitud: ${"%.1f".format(detector.accelerationThresholdMs2)} m/s² ",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -158,7 +198,7 @@ fun DetectorScreen(modifier: Modifier = Modifier) {
                     if (detector.start()) {
                         listening = true
                     } else {
-                        hint = "No hay acelerómetro o no se pudo iniciar."
+                        hint = "No hay sensor de movimiento o no se pudo iniciar."
                     }
                 },
                 enabled = !listening,
@@ -177,9 +217,63 @@ fun DetectorScreen(modifier: Modifier = Modifier) {
             }
         }
 
+        Text(
+            text = "Últimos en esta sesión",
+            style = MaterialTheme.typography.titleSmall,
+            modifier = Modifier.fillMaxWidth(),
+        )
+
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(200.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            items(candidates.take(8), key = { it.id }) { item ->
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                    ),
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                "${"%.1f".format(item.magnitudeMs2)} m/s²",
+                                style = MaterialTheme.typography.bodyLarge,
+                            )
+                            Text(
+                                when {
+                                    item.latitude != null && item.longitude != null ->
+                                        "${"%.5f".format(item.latitude)}, ${"%.5f".format(item.longitude)}"
+                                    else -> "Sin ubicación aún"
+                                },
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        TextButton(
+                            onClick = {
+                                PotholeSession.setReportDraft(item)
+                                navController.navigate(NavRoutes.REPORT) {
+                                    launchSingleTop = true
+                                }
+                            },
+                        ) { Text("Reportar") }
+                    }
+                }
+            }
+        }
+
         Spacer(modifier = Modifier.height(8.dp))
         Text(
-            text = "Mueve el teléfono con cuidado en pruebas; revisa Logcat con el tag PotholeDetector.",
+            text = "Los datos se guardan solo en esta app hasta que conectes Firebase.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

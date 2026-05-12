@@ -20,21 +20,27 @@ import com.google.android.gms.location.Priority
 import kotlin.math.sqrt
 
 /**
- * MVP: acelerómetro + magnitud del vector + umbral + cooldown 1s + última ubicación Fused.
+ * MVP: aceleración lineal (sin gravedad) si el dispositivo la expone; si no, acelerómetro bruto con umbral más alto.
+ * Magnitud + umbral + cooldown + última ubicación Fused.
  */
 class PotholeDetector(private val context: Context) : SensorEventListener {
 
-    /** Magnitud en m/s² (incluye gravedad; en reposo ~9.8). */
-    var accelerationThresholdMs2: Float = DEFAULT_THRESHOLD_MS2
+    private val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
+    private val motionSensor: Sensor? =
+        sensorManager.getDefaultSensor(Sensor.TYPE_LINEAR_ACCELERATION)
+            ?: sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+    private val usesLinearAcceleration: Boolean =
+        motionSensor?.type == Sensor.TYPE_LINEAR_ACCELERATION
+
+    /** Umbral en m/s² sobre la magnitud del vector (interpretación según el sensor activo). */
+    var accelerationThresholdMs2: Float =
+        motionSensor?.let { defaultThresholdForSensorType(it.type) } ?: DEFAULT_THRESHOLD_RAW_MS2
         set(value) {
-            field = value.coerceIn(10f, 50f)
+            field = value.coerceIn(MIN_THRESHOLD_MS2, MAX_THRESHOLD_MS2)
         }
 
     var onPotholeDetected: ((latitude: Double?, longitude: Double?, magnitudeMs2: Float) -> Unit)? =
         null
-
-    private val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
-    private val accelerometer: Sensor? = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
 
     private val fusedClient = LocationServices.getFusedLocationProviderClient(context)
     private var lastLocation: Location? = null
@@ -66,8 +72,8 @@ class PotholeDetector(private val context: Context) : SensorEventListener {
     @SuppressLint("MissingPermission")
     fun start(): Boolean {
         if (running) return true
-        if (accelerometer == null) {
-            Log.w(TAG, "Sin acelerómetro")
+        if (motionSensor == null) {
+            Log.w(TAG, "Sin sensor de movimiento")
             return false
         }
         if (!hasLocationPermission()) {
@@ -97,12 +103,15 @@ class PotholeDetector(private val context: Context) : SensorEventListener {
 
         sensorManager.registerListener(
             this,
-            accelerometer,
+            motionSensor,
             SensorManager.SENSOR_DELAY_UI,
         )
 
         running = true
-        Log.d(TAG, "Detector iniciado (umbral=${accelerationThresholdMs2} m/s²)")
+        Log.d(
+            TAG,
+            "Detector iniciado (sensor=${if (usesLinearAcceleration) "LINEAR" else "RAW"}, umbral=${accelerationThresholdMs2} m/s²)",
+        )
         return true
     }
 
@@ -115,7 +124,7 @@ class PotholeDetector(private val context: Context) : SensorEventListener {
     }
 
     override fun onSensorChanged(event: SensorEvent) {
-        if (event.sensor.type != Sensor.TYPE_ACCELEROMETER) return
+        if (event.sensor.type != motionSensor?.type) return
 
         val x = event.values[0]
         val y = event.values[1]
@@ -141,11 +150,25 @@ class PotholeDetector(private val context: Context) : SensorEventListener {
 
     companion object {
         private const val TAG = "PotholeDetector"
-        private const val COOLDOWN_MS = 1_000L
+        private const val COOLDOWN_MS = 2_000L
         private const val LOCATION_UPDATE_INTERVAL_MS = 2_000L
         private const val LOCATION_MIN_INTERVAL_MS = 1_000L
 
-        /** Por encima de ~9.8 m/s² en reposo; ajusta en prototipo si hay muchos falsos positivos. */
-        const val DEFAULT_THRESHOLD_MS2 = 18f
+        private const val MIN_THRESHOLD_MS2 = 6f
+        private const val MAX_THRESHOLD_MS2 = 45f
+
+        /**
+         * LINEAR: sin gravedad; ~12 m/s² filtra mucho ruido de mano.
+         * RAW: incluye gravedad; hace falta umbral más alto (~26) para no disparar al mover el teléfono.
+         */
+        const val DEFAULT_THRESHOLD_LINEAR_MS2 = 12f
+        const val DEFAULT_THRESHOLD_RAW_MS2 = 26f
+
+        fun defaultThresholdForSensorType(sensorType: Int): Float =
+            if (sensorType == Sensor.TYPE_LINEAR_ACCELERATION) {
+                DEFAULT_THRESHOLD_LINEAR_MS2
+            } else {
+                DEFAULT_THRESHOLD_RAW_MS2
+            }
     }
 }
